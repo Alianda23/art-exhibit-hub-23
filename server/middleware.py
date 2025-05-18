@@ -6,6 +6,7 @@ from functools import wraps
 from http.server import BaseHTTPRequestHandler
 from decimal import Decimal
 import json
+from flask import request, jsonify
 
 # Get the secret key from environment or use a default (in production, always use environment variables)
 SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'afriart_default_secret_key')
@@ -72,6 +73,39 @@ def extract_auth_token(handler):
         token = auth_header.split(" ")[1]
     
     return token
+
+def token_required(f):
+    """Decorator to ensure a valid token is present for protected routes in Flask"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        
+        # Get token from Authorization header
+        auth_header = request.headers.get('Authorization')
+        if auth_header:
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]
+            elif " " in auth_header:
+                token = auth_header.split(" ")[1]
+        
+        if not token:
+            return jsonify({'error': 'Authentication token is missing!'}), 401
+        
+        try:
+            # Verify token
+            payload = verify_token(token)
+            if isinstance(payload, dict) and "error" in payload:
+                return jsonify({'error': payload["error"]}), 401
+            
+            # Add user info to request
+            request.user = payload
+            
+        except Exception as e:
+            return jsonify({'error': f'Authentication error: {str(e)}'}), 401
+            
+        return f(*args, **kwargs)
+    
+    return decorated
 
 def auth_required(handler_method):
     """Decorator to ensure a valid token is present for protected routes"""
